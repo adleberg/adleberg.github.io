@@ -26,6 +26,85 @@
     <script type="text/babel">
       const { useMemo, useRef, useState, useEffect } = React;
 
+      // =============== Sticky Header + Modal ===============
+      function Header({ onOpenFAQ }) {
+        return (
+          <div className="sticky top-0 z-40 backdrop-blur bg-white/80 border-b">
+            <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-xl bg-black text-white grid place-items-center font-bold">R</div>
+                <div>
+                  <div className="text-sm text-gray-500">Radiology</div>
+                  <div className="text-lg font-semibold tracking-tight">RVU Tally</div>
+                </div>
+              </div>
+              <nav className="flex items-center gap-2">
+                <button
+                  onClick={onOpenFAQ}
+                  className="px-3 py-1.5 rounded-xl border bg-white shadow-sm text-sm hover:bg-gray-50"
+                >
+                  FAQ
+                </button>
+                <button
+                  onClick={() => window.open("https://radswift.com", "_blank")}
+                  className="px-3 py-1.5 rounded-xl border bg-white shadow-sm text-sm hover:bg-gray-50"
+                >
+                  Back to radswift.com
+                </button>
+              </nav>
+            </div>
+          </div>
+        );
+      }
+
+      function Modal({ open, onClose, title, children }) {
+        // close on ESC
+        useEffect(() => {
+          if (!open) return;
+          const onKey = (e) => { if (e.key === "Escape") onClose(); };
+          window.addEventListener("keydown", onKey);
+          return () => window.removeEventListener("keydown", onKey);
+        }, [open, onClose]);
+
+        if (!open) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50"
+            aria-hidden={!open}
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={onClose}
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border">
+                <div className="flex items-center justify-between px-5 py-4 border-b">
+                  <h2 className="text-lg font-semibold">{title}</h2>
+                  <button
+                    onClick={onClose}
+                    className="rounded-lg px-2 py-1 text-sm hover:bg-gray-100"
+                    aria-label="Close"
+                  >✕</button>
+                </div>
+                <div className="px-5 py-4 text-sm leading-6 text-gray-700 max-h-[60vh] overflow-auto">
+                  {children}
+                </div>
+                <div className="px-5 py-3 border-t flex justify-end">
+                  <button
+                    onClick={onClose}
+                    className="px-3 py-1.5 rounded-xl border bg-white hover:bg-gray-50 text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       // CSV helper
       function toCSV(rows) {
         const header = Object.keys(rows[0] || { Study: "", Count: "", RVU: "", Total: "" });
@@ -35,146 +114,53 @@
         return lines.join("\n");
       }
 
-      // Prefilled starter RVUs (loose patterns—no ^ anchor)
-const DEFAULT_RULES = [
-  // ========= XRAY (Extremities & Chest/Abdomen) =========
-  { label: "XR Hand 3+ Views",
-    pattern: "XR\\s*HAND\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 0.70 },
+      // Prefilled regex rules (loose to tolerate OCR noise)
+      const DEFAULT_RULES = [
+        { label: "XR HAND 3+ VIEW",               pattern: "XR\\s*HAND\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?", baseRvu: 0.17 },
+        { label: "XR ANKLE 3+ VIEW",              pattern: "XR\\s*ANKLE\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?", baseRvu: 0.17 },
+        { label: "XR FOOT 3+ VIEW",               pattern: "XR\\s*FOOT\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?",  baseRvu: 0.17 },
+        { label: "XR WRIST 3+ VIEW",              pattern: "XR\\s*WRIST\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?", baseRvu: 0.17 },
+        { label: "XR SHOULDER 2+ VIEW",           pattern: "XR\\s*SHOULDER\\b.*(?:2\\s*\\+|2\\+?)\\s*VIEW(?:S)?", baseRvu: 0.18 },
+        { label: "XR KNEE 4+ VIEW",               pattern: "XR\\s*KNEE\\b.*(?:4\\s*\\+|4\\+?)\\s*VIEW(?:S)?",  baseRvu: 0.22 },
+        { label: "XR KNEE 3 VIEW",                pattern: "XR\\s*KNEE\\b.*(?:3\\s*VIEW(?:S)?)",              baseRvu: 0.18 },
+        { label: "XR TIBIA FIBULA 2 VIEW",        pattern: "XR\\s*(?:TIBIA\\s*FIBULA|TBIAF?BULA)\\b.*(?:2\\s*VIEW(?:S)?)", baseRvu: 0.17 },
+        { label: "XR CHEST 2 VIEWS (PA/LAT)",     pattern: "XR\\s*CHEST\\b.*(?:2\\s*VIEW(?:S)?).*?(?:PA\\s*LAT(?:ERAL)?|PALATERAL|PA\\s*LATERAL)", baseRvu: 0.22 },
+        { label: "XR CHEST 1 VIEW",               pattern: "XR\\s*CHEST\\b.*(?:1\\s*VIEW).*?(?:PA|AP|PA\\s*OR\\s*AP)?", baseRvu: 0.18 },
+        { label: "XR ABDOMEN 1 VIEW (AP)",        pattern: "XR\\s*ABDOMEN\\b.*(?:1\\s*VIEW).*?(?:AP)?",       baseRvu: 0.20 },
 
-  { label: "XR Ankle 3+ Views",
-    pattern: "XR\\s*ANKLE\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 0.70 },
+        { label: "XR L-SPINE 4+ VIEWS",           pattern: "XR\\s*L[-\\s]?SPINE\\b.*(?:4\\s*\\+|4\\+?)\\s*VIEW(?:S)?", baseRvu: 0.31 },
+        { label: "XR L-SPINE 2-3 VIEWS",          pattern: "XR\\s*L[-\\s]?SPINE\\b.*(?:(?:2\\s*-?\\s*3)|23)\\s*VIEW(?:S)?", baseRvu: 0.22 },
+        { label: "XR T-SPINE 3 VIEWS",            pattern: "XR\\s*T[-\\s]?SPINE\\b.*(?:3\\s*VIEW(?:S)?)",     baseRvu: 0.22 },
+        { label: "XR C-SPINE 2-3 VIEWS",          pattern: "XR\\s*C[-\\s]?SPINE\\b.*(?:(?:2\\s*-?\\s*3)|23)\\s*VIEW(?:S)?", baseRvu: 0.22 },
 
-  { label: "XR Foot 3+ Views",
-    pattern: "XR\\s*FOOT\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 0.70 },
+        { label: "XR HIP 2-3 VIEWS W/ PELVIS",    pattern: "XR\\s*H[IP]\\b.*(?:(?:2\\s*-?\\s*3)|23|2\\s*I)\\s*VIEW(?:S)?\\b.*(?:W\\s*[/]?\\s*|WITH\\s+)PELVI?S", baseRvu: 0.22 },
+        { label: "XR HIPS BILATERAL 2+ VIEWS",    pattern: "XR\\s*HIPS?\\b.*BILATERAL.*(?:2\\s*\\+|2\\+?)\\s*VIEW", baseRvu: 0.31 },
 
-  { label: "XR Wrist 3+ Views",
-    pattern: "XR\\s*WRIST\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 0.70 },
+        { label: "CT HEAD W/O",                   pattern: "CT\\s*HEAD\\b.*(?:W[\\s/]*O\\b|W\\s*A?\\s*O\\b).*CONTRAST", baseRvu: 0.85 },
+        { label: "CT C-SPINE W/O",                pattern: "CT\\s*C[-\\s]?SPINE\\b.*W[\\s/]*O\\b.*CONTRAST", baseRvu: 1.16 },
+        { label: "CT CHEST W/",                   pattern: "CT\\s*CHEST\\b.*W\\s*[/]?\\s*(?:IV\\s*)?CONT",   baseRvu: 1.24 },
+        { label: "CTA CHEST (PE PROTOCOL)",       pattern: "CT\\s*ANGIO\\s*(?:CHEST|LUNG)\\b.*(?:PULMONARY\\s*EM|PE)", baseRvu: 1.92 },
 
-  { label: "XR Knee 4+ Views",
-    pattern: "XR\\s*KNEE\\b.*(?:4\\s*\\+|4\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 0.95 },
+        { label: "CT ABD/PEL W/",                 pattern: "CT\\s*ABDOM(?:EN)?\\b.*(?:\\\\?T\\\\?|[/\\\\\\-\\s]+).*PELVI?S\\b.*W\\s*[/]?\\s*(?:IV\\s*)?CONT", baseRvu: 1.85 },
+        { label: "CT ABD/PEL W/O",                pattern: "CT\\s*ABDOM(?:EN)?\\b.*(?:\\\\?T\\\\?|[/\\\\\\-\\s]+).*PELVI?S\\b.*W[\\s/]*O\\b", baseRvu: 1.55 },
+        { label: "CT CAP W/",                     pattern: "CT\\s*CHEST\\b.*ABDOM(?:EN)?\\b.*PELVI?S\\b.*W\\s*[/]?", baseRvu: 1.24 + 1.85 },
 
-  { label: "XR Knee 3 Views",
-    pattern: "XR\\s*KNEE\\b.*(?:3\\s*VIEW(?:S)?)",
-    baseRvu: 0.70 },
+        { label: "CTA HEAD (STROKE)",             pattern: "CT\\s*ANGIO\\s*HEAD\\b.*NECK\\b.*STROKE", baseRvu: 1.75 },
+        { label: "CTA NECK (STROKE)",             pattern: "CT\\s*ANGIO\\s*NECK\\b.*STROKE",          baseRvu: 1.75 },
+        { label: "CTA HEAD+NECK (STROKE)",        pattern: "CT\\s*ANGIO\\s*HEAD\\b.*NECK\\b.*STROKE", baseRvu: 1.75 + 1.75 },
 
-  // Tibia/Fibula 2V (tolerate OCR like XRTBIAFBULA2VIEW)
-  { label: "XR Tibia/Fibula 2 Views",
-    pattern: "XR\\s*(?:TIBIA\\s*FIBULA|TBIAF?BULA)\\b.*(?:2\\s*VIEW(?:S)?)",
-    baseRvu: 0.70 },
+        { label: "US ABDOMEN LIMITED",            pattern: "(?:US|ULTRASOUND)\\b.*ABDOMEN\\b.*LIMITED", baseRvu: 0.84 },
+        { label: "US RETROPERITONEAL",            pattern: "(?:US|ULTRASOUND)\\s*RETROPERITONEAL",     baseRvu: 1.14 },
+        { label: "US TESTICULAR + DOPPLER",       pattern: "(?:US|ULTRASOUND)\\b.*TESTICULAR.*DOPPLER", baseRvu: 0.50 + 1.21 },
 
-  // Chest
-  { label: "XR Chest 2 Views (PA/Lateral)",
-    pattern: "XR\\s*CHEST\\b.*(?:2\\s*VIEW(?:S)?).*?(?:PA\\s*LAT(?:ERAL)?|PALATERAL|PA\\s*LATERAL)",
-    baseRvu: 0.22 },
+        { label: "VAS DUPLEX VENOUS LOWER EXT BILAT",
+          pattern: "VA[SC]\\b.*DUPLEX.*V?ENOUS.*LOWER\\b", baseRvu: 0.68 },
 
-  { label: "XR Chest 1 View (PA or AP)",
-    pattern: "XR\\s*CHEST\\b.*(?:1\\s*VIEW).*?(?:PA|AP|PA\\s*OR\\s*AP)?",
-    baseRvu: 0.10 },
+        { label: "VAS CAROTID DUPLEX BILAT",
+          pattern: "VA[SC]\\b.*DUPLEX.*ARTERIAL.*CAROTID.*BILAT", baseRvu: 0.60 },
+      ];
 
-  // Abdomen
-  { label: "XR Abdomen 1 View (AP)",
-    pattern: "XR\\s*ABDOMEN\\b.*(?:1\\s*VIEW).*?(?:AP)?",
-    baseRvu: 0.20 },
-
-  // ========= XRAY (Spine & Hips) =========
-  { label: "XR L-Spine 4+ Views",
-    pattern: "XR\\s*L[-\\s]?SPINE\\b.*(?:4\\s*\\+|4\\+?)\\s*VIEW(?:S)?",
-    baseRvu: 1.30 },
-
-  { label: "XR L-Spine 2-3 Views",
-    // match '2-3' OR OCR '23'
-    pattern: "XR\\s*L[-\\s]?SPINE\\b.*(?:(?:2\\s*-?\\s*3)|23)\\s*VIEW(?:S)?",
-    baseRvu: 0.95 },
-
-  { label: "XR T-Spine 3 Views",
-    pattern: "XR\\s*T[-\\s]?SPINE\\b.*(?:3\\s*VIEW(?:S)?)",
-    baseRvu: 0.95 },
-
-  { label: "XR C-Spine 2-3 Views",
-    pattern: "XR\\s*C[-\\s]?SPINE\\b.*(?:(?:2\\s*-?\\s*3)|23)\\s*VIEW(?:S)?",
-    baseRvu: 0.95 },
-
-  // Hips & Pelvis variants: XRHIP 23 VIEWS ... W/PELVIS ; XRHP2IVIEWS...
-  { label: "XR Hip 2-3 Views w/ Pelvis",
-    pattern: "XR\\s*H[IP]\\b.*(?:(?:2\\s*-?\\s*3)|23|2\\s*I)\\s*VIEW(?:S)?\\b.*(?:W\\s*[/]?\\s*|WITH\\s+)PELVI?S",
-    baseRvu: 0.90 },
-
-  { label: "XR Hips Bilateral 2+ Views",
-    pattern: "XR\\s*HIPS?\\b.*BILATERAL.*(?:2\\s*\\+|2\\+?)\\s*VIEW",
-    baseRvu: 1.30 },
-
-  // ========= CT (Head/Neck/Chest/Abdomen/Pelvis/C-spine) =========
-  // CT Head without contrast, tolerate WAO, W/O, WO, etc.
-  { label: "CT Head W/O Contrast",
-    pattern: "CT\\s*HEAD\\b.*W[\\s/]*O\\b.*CONTRAST|CT\\s*HEAD\\b.*\\bW\\s*A?\\s*O\\b.*CONTRAST",
-    baseRvu: 2.40 },
-
-  // CTA Head & Neck Stroke
-  { label: "CT Angio Head/Neck (Stroke)",
-    pattern: "CT\\s*ANGIO\\s*HEAD\\b.*NECK\\b.*STROKE",
-    baseRvu: 5.50 },
-
-  // CTA Chest for PE (“CT ANGIO LUNG FOR PULMONARY EM...”)
-  { label: "CT Angio Chest (PE protocol)",
-    pattern: "CT\\s*ANGIO\\s*(?:CHEST|LUNG)\\b.*(?:PULMONARY\\s*EM|PE)",
-    baseRvu: 5.50 },
-
-  // CT Chest W/ Contrast
-  { label: "CT Chest w/",
-    pattern: "CT\\s*CHEST\\b.*W\\s*[/]?\\s*(?:IV\\s*)?CONT",
-    baseRvu: 7.50 },
-
-  // CT Abdomen/Pelvis W/ (tolerate \T\ separators and spacing)
-  { label: "CT Abdomen/Pelvis w/ IV Contrast",
-    pattern: "CT\\s*ABDOM(?:EN)?\\b.*(?:\\\\?T\\\\?|[/\\\\\\-\\s]+).*PELVI?S\\b.*W\\s*[/]?\\s*(?:IV\\s*)?CONT",
-    baseRvu: 12.00 },
-
-  // CT Abdomen/Pelvis W/O
-  { label: "CT Abdomen/Pelvis w/o Contrast",
-    pattern: "CT\\s*ABDOM(?:EN)?\\b.*(?:\\\\?T\\\\?|[/\\\\\\-\\s]+).*PELVI?S\\b.*W[\\s/]*O\\b",
-    baseRvu: 9.00 },
-
-  // CT C-Spine with/without variants (e.g., "CTCSPINEW/O CONTRAST")
-  { label: "CT C-Spine w/o Contrast",
-    pattern: "CT\\s*C[-\\s]?SPINE\\b.*W[\\s/]*O\\b.*CONTRAST",
-    baseRvu: 3.00 },
-
-  { label: "CT C-Spine w/ Contrast",
-    pattern: "CT\\s*C[-\\s]?SPINE\\b.*W\\s*[/]?\\s*(?:IV\\s*)?CONTRAST",
-    baseRvu: 3.50 },
-
-  // ========= Ultrasound =========
-  { label: "US Abdomen Limited",
-    pattern: "(?:US|ULTRASOUND)\\b.*ABDOMEN\\b.*LIMITED",
-    baseRvu: 0.70 },
-
-  { label: "US Retroperitoneal",
-    pattern: "(?:US|ULTRASOUND)\\s*RETROPERITONEAL",
-    baseRvu: 0.70 },
-
-  { label: "US OB Transvaginal",
-    pattern: "(?:US|ULTRASOUND)\\b.*(?:OB|OBSTETRIC)\\b.*TRANS\\s*VAGINAL|USOBTRANSVAGINAL",
-    baseRvu: 1.20 },
-
-  { label: "US Testicular with Doppler",
-    pattern: "(?:US|ULTRASOUND)\\b.*TESTICULAR.*DOPPLER",
-    baseRvu: 2.00 },
-
-  // ========= Vascular (Duplex) =========
-  { label: "Venous Duplex Lower Extremity",
-    pattern: "VA[SC]\\b.*DUPLEX.*V?ENOUS.*LOWER\\b",
-    baseRvu: 2.60 },
-
-  { label: "Carotid Duplex Bilateral",
-    pattern: "VA[SC]\\b.*DUPLEX.*ARTERIAL.*CAROTID.*BILAT",
-    baseRvu: 2.30 },
-];
-
+      // =============== App Rows ===============
       function StudyRow({ name, count, rvu, onRvuChange }) {
         const total = (Number(rvu) || 0) * (count || 0);
         return (
@@ -201,7 +187,8 @@ const DEFAULT_RULES = [
         const [ocrText, setOcrText] = useState("");
         const [progress, setProgress] = useState(null);
         const [counts, setCounts] = useState({});
-        const [procLines, setProcLines] = useState([]); // stores extracted procedure lines
+        const [procLines, setProcLines] = useState([]);
+        const [faqOpen, setFaqOpen] = useState(false);
         const fileRef = useRef(null);
 
         const handleFile = (file) => {
@@ -230,9 +217,8 @@ const DEFAULT_RULES = [
           handleFile(file);
         };
 
-        // Classifier: broader modality detector + normalization
+        // Classifier
         const classify = (rawLines) => {
-          // Include common variants (XR/X-RAY/RADIOGRAPH, US/ULTRASOUND, VAS/VASCULAR; add CT/CTA/MRI/MRA for robustness)
           const modalityRegex = /\b(XR|X[-\s]?RAY|RADIOGRAPH|CT|CTA|MRI|MRA|US|ULTRASOUND|VAS|VASCULAR)\b/i;
 
           const normalize = (s) => s
@@ -249,30 +235,30 @@ const DEFAULT_RULES = [
             const L = normalize(l);
             const m = L.match(modalityRegex);
             if (!m) continue;
-
-            // Take text starting at the first modality token
             const start = m.index ?? 0;
             const fromModality = L.slice(start).trim();
-
-            // Skip very short fragments
             if (fromModality.length < 5) continue;
-
             picked.push(fromModality);
           }
 
-          // Count matches against rules
           const newCounts = {};
           for (const pl of picked) {
             const rule = rules.find((r) => new RegExp(r.pattern, "i").test(pl));
+            const key = rule ? r.label : `❓ Unclassified: ${pl}`;
+          }
+          // Count using first-match wins
+          const counted = {};
+          for (const pl of picked) {
+            const rule = rules.find((r) => new RegExp(r.pattern, "i").test(pl));
             const key = rule ? rule.label : `❓ Unclassified: ${pl}`;
-            newCounts[key] = (newCounts[key] || 0) + 1;
+            counted[key] = (counted[key] || 0) + 1;
           }
 
           setProcLines(picked);
-          setCounts(newCounts);
+          setCounts(counted);
         };
 
-        // Re-run classification whenever OCR text or rules change
+        // Re-run when OCR or rules change
         useEffect(() => {
           if (!ocrText) {
             setCounts({});
@@ -326,186 +312,195 @@ const DEFAULT_RULES = [
         };
 
         return (
-          <div className="min-h-screen p-6">
-            <div className="max-w-6xl mx-auto space-y-6">
-              <header className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold">Radiology RVU Tally</h1>
-                  <p className="text-sm text-gray-600">Upload a PowerScribe screenshot → OCR → counts → RVUs.</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-2xl bg-white shadow border">Upload Image</button>
-                  <button onClick={exportCSV} className="px-4 py-2 rounded-2xl bg-white shadow border">Export CSV</button>
-                </div>
-              </header>
+          <>
+            <Header onOpenFAQ={() => setFaqOpen(true)} />
+            <div className="min-h-screen p-6">
+              <div className="max-w-6xl mx-auto space-y-6">
+                <header className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">Radiology RVU Tally</h1>
+                    <p className="text-sm text-gray-600">Upload a PowerScribe screenshot → OCR → counts → RVUs.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-2xl bg-white shadow border">Upload Image</button>
+                    <button onClick={exportCSV} className="px-4 py-2 rounded-2xl bg-white shadow border">Export CSV</button>
+                  </div>
+                </header>
 
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,.png,.jpg,.jpeg"
-                className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,.png,.jpg,.jpeg"
+                  className="hidden"
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
 
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-              >
-                <div className="bg-white rounded-2xl shadow p-4 min-h-[300px] flex items-center justify-center overflow-hidden">
-                  {image ? (
-                    <img src={image} alt="uploaded" className="max-h-[420px] rounded-xl" />
-                  ) : (
-                    <div className="text-center">
-                      <div className="text-lg font-medium">Drag & drop your screenshot here</div>
-                      <div className="text-sm text-gray-600">or click “Upload Image”</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-white rounded-2xl shadow p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-semibold">OCR</div>
-                    {progress != null && (
-                      <div className="w-full h-2 bg-gray-200 rounded-xl overflow-hidden">
-                        <div className="h-2 bg-gray-800" style={{ width: `${progress}%` }} />
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+                >
+                  <div className="bg-white rounded-2xl shadow p-4 min-h-[300px] flex items-center justify-center overflow-hidden">
+                    {image ? (
+                      <img src={image} alt="uploaded" className="max-h-[420px] rounded-xl" />
+                    ) : (
+                      <div className="text-center">
+                        <div className="text-lg font-medium">Drag & drop your screenshot here</div>
+                        <div className="text-sm text-gray-600">or click “Upload Image”</div>
                       </div>
                     )}
                   </div>
-                  <pre className="mt-3 max-h-[420px] overflow-auto text-xs bg-gray-50 p-3 rounded-xl whitespace-pre-wrap">
-                    {ocrText || "(text will appear here after OCR)"}
-                  </pre>
 
-                  {/* Debug helper to see what we think are procedure lines */}
-                  <div className="mt-3 text-xs">
-                    <div className="font-semibold mb-1">Detected procedure lines</div>
-                    <ul className="list-disc ml-5 max-h-40 overflow-auto">
-                      {procLines.length === 0 ? (
-                        <li className="text-gray-500">None detected yet</li>
-                      ) : (
-                        procLines.map((l, i) => (
-                          <li key={i}>{l}</li>
-                        ))
+                  <div className="bg-white rounded-2xl shadow p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-semibold">OCR</div>
+                      {progress != null && (
+                        <div className="w-full h-2 bg-gray-200 rounded-xl overflow-hidden">
+                          <div className="h-2 bg-gray-800" style={{ width: `${progress}%` }} />
+                        </div>
                       )}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <section className="bg-white rounded-2xl shadow p-4">
-                <div className="flex items-end justify-between mb-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">Study Counts & RVUs</h2>
-                    <p className="text-sm text-gray-600">Edit RVUs as needed. Totals update live.</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-gray-500">Total RVUs</div>
-                    <div className="text-2xl font-bold tabular-nums">{totalRVU.toFixed(2)}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  <div className="col-span-6">Study</div>
-                  <div className="col-span-2 text-center">Count</div>
-                  <div className="col-span-2">RVU</div>
-                  <div className="col-span-2 text-right">Total</div>
-                </div>
-
-                <div className="divide-y">
-                  {rows.length === 0 ? (
-                    <div className="text-sm text-gray-500 py-8 text-center">
-                      No studies detected yet. Upload a screenshot to begin.
                     </div>
-                  ) : (
-                    rows.map((r) => (
-                      <StudyRow
-                        key={r.name}
-                        name={r.name}
-                        count={r.count}
-                        rvu={r.rvu}
-                        onRvuChange={(val) => updateRVU(r.name, val)}
-                      />
-                    ))
-                  )}
-                </div>
-              </section>
+                    <pre className="mt-3 max-h-[420px] overflow-auto text-xs bg-gray-50 p-3 rounded-xl whitespace-pre-wrap">
+                      {ocrText || "(text will appear here after OCR)"}
+                    </pre>
 
-              <section className="bg-white rounded-2xl shadow p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold">Classification Rules</h3>
-                  <button onClick={addRule} className="px-3 py-1.5 rounded-xl bg-white shadow border">Add Rule</button>
+                    {/* Debug helper */}
+                    <div className="mt-3 text-xs">
+                      <div className="font-semibold mb-1">Detected procedure lines</div>
+                      <ul className="list-disc ml-5 max-h-40 overflow-auto">
+                        {procLines.length === 0 ? (
+                          <li className="text-gray-500">None detected yet</li>
+                        ) : (
+                          procLines.map((l, i) => <li key={i}>{l}</li>)
+                        )}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  OCR lines (even with timestamps/patient info) are trimmed to the first modality token (XR/CT/US/VAS/etc.), then matched top→bottom against these regex patterns.
-                </p>
-                <div className="overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-gray-600">
-                        <th className="p-2">Label</th>
-                        <th className="p-2">Regex Pattern</th>
-                        <th className="p-2 w-24">Base RVU</th>
-                        <th className="p-2 w-20"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rules.map((r, idx) => (
-                        <tr key={idx} className="border-t">
-                          <td className="p-2">
-                            <input
-                              className="w-full border rounded-xl px-2 py-1"
-                              value={r.label}
-                              onChange={(e) =>
-                                setRules((prev) =>
-                                  prev.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x))
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-full border rounded-xl px-2 py-1 font-mono"
-                              value={r.pattern}
-                              onChange={(e) =>
-                                setRules((prev) =>
-                                  prev.map((x, i) => (i === idx ? { ...x, pattern: e.target.value } : x))
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="w-full border rounded-xl px-2 py-1"
-                              value={r.baseRvu}
-                              onChange={(e) =>
-                                setRules((prev) =>
-                                  prev.map((x, i) => (i === idx ? { ...x, baseRvu: Number(e.target.value) || 0 } : x))
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2 text-right">
-                            <button
-                              className="px-2 py-1 text-xs rounded-lg border"
-                              onClick={() => setRules((prev) => prev.filter((_, i) => i !== idx))}
-                            >
-                              Remove
-                            </button>
-                          </td>
+
+                <section className="bg-white rounded-2xl shadow p-4">
+                  <div className="flex items-end justify-between mb-4">
+                    <div>
+                      <h2 className="text-xl font-semibold">Study Counts & RVUs</h2>
+                      <p className="text-sm text-gray-600">Edit RVUs as needed. Totals update live.</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-gray-500">Total RVUs</div>
+                      <div className="text-2xl font-bold tabular-nums">{totalRVU.toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <div className="col-span-6">Study</div>
+                    <div className="col-span-2 text-center">Count</div>
+                    <div className="col-span-2">RVU</div>
+                    <div className="col-span-2 text-right">Total</div>
+                  </div>
+
+                  <div className="divide-y">
+                    {rows.length === 0 ? (
+                      <div className="text-sm text-gray-500 py-8 text-center">
+                        No studies detected yet. Upload a screenshot to begin.
+                      </div>
+                    ) : (
+                      rows.map((r) => (
+                        <StudyRow
+                          key={r.name}
+                          name={r.name}
+                          count={r.count}
+                          rvu={r.rvu}
+                          onRvuChange={(val) => updateRVU(r.name, val)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="bg-white rounded-2xl shadow p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold">Classification Rules</h3>
+                    <button onClick={addRule} className="px-3 py-1.5 rounded-xl bg-white shadow border">Add Rule</button>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    OCR lines are trimmed to the first modality token (XR/CT/US/VAS/etc.), then matched top→bottom against these regex patterns.
+                  </p>
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600">
+                          <th className="p-2">Label</th>
+                          <th className="p-2">Regex Pattern</th>
+                          <th className="p-2 w-24">Base RVU</th>
+                          <th className="p-2 w-20"></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+                      </thead>
+                      <tbody>
+                        {rules.map((r, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="p-2">
+                              <input
+                                className="w-full border rounded-xl px-2 py-1"
+                                value={r.label}
+                                onChange={(e) =>
+                                  setRules((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x))
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="w-full border rounded-xl px-2 py-1 font-mono"
+                                value={r.pattern}
+                                onChange={(e) =>
+                                  setRules((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, pattern: e.target.value } : x))
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="w-full border rounded-xl px-2 py-1"
+                                value={r.baseRvu}
+                                onChange={(e) =>
+                                  setRules((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, baseRvu: Number(e.target.value) || 0 } : x))
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <button
+                                className="px-2 py-1 text-xs rounded-lg border"
+                                onClick={() => setRules((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
 
-              <footer className="text-center text-xs text-gray-500 py-4">
-                Built with client-side OCR (Tesseract.js). No images leave your browser.
-              </footer>
+                <footer className="text-center text-xs text-gray-500 py-4">
+                  Built with client-side OCR (Tesseract.js). No images leave your browser.
+                </footer>
+              </div>
             </div>
-          </div>
+
+            <Modal open={faqOpen} onClose={() => setFaqOpen(false)} title="FAQ">
+              <p><strong>Lorem ipsum dolor sit amet</strong>, consectetur adipiscing elit. Integer vehicula, dui non fermentum tristique, dolor eros tristique metus, ut tristique lorem eros id orci. Nulla facilisi. Mauris sed feugiat nibh, a tempor nibh.</p>
+              <p className="mt-3">Curabitur commodo, augue a ultrices scelerisque, nibh lorem volutpat mi, at laoreet justo arcu non justo. Vestibulum sit amet tellus vitae nibh gravida pulvinar. Suspendisse non risus ut sapien interdum molestie. Donec rutrum dui eget posuere consequat.</p>
+              <p className="mt-3">Aliquam erat volutpat. Sed dictum, tortor quis imperdiet imperdiet, arcu massa accumsan justo, eget bibendum lectus ligula id tortor. Cras sed ultricies metus, eget tincidunt neque. Integer id posuere magna. Proin porta dictum nibh, non viverra lorem pharetra non.</p>
+              <p className="mt-3">Nunc efficitur, augue in cursus elementum, massa odio efficitur felis, vitae interdum odio arcu at est. Pellentesque rhoncus maximus nisi at feugiat. Nam varius, nisl ut fermentum egestas, nibh eros cursus justo, eget rhoncus dui lorem a justo.</p>
+              <p className="mt-3">Fusce vitae sem a erat facilisis suscipit. Vivamus non nunc eget lacus blandit pellentesque. Sed et ex vel ipsum pretium pulvinar. Vestibulum tempor, dolor commodo fermentum volutpat, diam ipsum varius enim, sed porta tellus quam id arcu.</p>
+            </Modal>
+          </>
         );
       }
 
