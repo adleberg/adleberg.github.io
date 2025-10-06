@@ -32,7 +32,7 @@
           <div className="sticky top-0 z-40 backdrop-blur bg-white/80 border-b">
             <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-xl bg-black text-white grid place-items-center font-bold">R</div>
+                <div className="h-8 w-8 rounded-xl bg-black text-white grid place-items-center font-bold"></div>
                 <div>
                   <div className="text-sm text-gray-500"></div>
                   <div className="text-lg font-semibold tracking-tight"></div>
@@ -318,7 +318,7 @@
               <div className="max-w-6xl mx-auto space-y-6">
                 <header className="flex items-center justify-between">
                   <div>
-                    <h1 className="text-2xl font-bold">Radiology RVU Tally</h1>
+                    <h1 className="text-2xl font-bold">Radiology Calculator</h1>
                     <p className="text-sm text-gray-600">Upload a PowerScribe screenshot → OCR → counts → RVUs.</p>
                   </div>
                   <div className="flex gap-2">
@@ -493,13 +493,30 @@
               </div>
             </div>
 
-            <Modal open={faqOpen} onClose={() => setFaqOpen(false)} title="FAQ">
-              <p><strong>Lorem ipsum dolor sit amet</strong>, consectetur adipiscing elit. Integer vehicula, dui non fermentum tristique, dolor eros tristique metus, ut tristique lorem eros id orci. Nulla facilisi. Mauris sed feugiat nibh, a tempor nibh.</p>
-              <p className="mt-3">Curabitur commodo, augue a ultrices scelerisque, nibh lorem volutpat mi, at laoreet justo arcu non justo. Vestibulum sit amet tellus vitae nibh gravida pulvinar. Suspendisse non risus ut sapien interdum molestie. Donec rutrum dui eget posuere consequat.</p>
-              <p className="mt-3">Aliquam erat volutpat. Sed dictum, tortor quis imperdiet imperdiet, arcu massa accumsan justo, eget bibendum lectus ligula id tortor. Cras sed ultricies metus, eget tincidunt neque. Integer id posuere magna. Proin porta dictum nibh, non viverra lorem pharetra non.</p>
-              <p className="mt-3">Nunc efficitur, augue in cursus elementum, massa odio efficitur felis, vitae interdum odio arcu at est. Pellentesque rhoncus maximus nisi at feugiat. Nam varius, nisl ut fermentum egestas, nibh eros cursus justo, eget rhoncus dui lorem a justo.</p>
-              <p className="mt-3">Fusce vitae sem a erat facilisis suscipit. Vivamus non nunc eget lacus blandit pellentesque. Sed et ex vel ipsum pretium pulvinar. Vestibulum tempor, dolor commodo fermentum volutpat, diam ipsum varius enim, sed porta tellus quam id arcu.</p>
-            </Modal>
+<Modal open={faqOpen} onClose={() => setFaqOpen(false)} title="FAQ">
+  <dl className="space-y-4">
+    {/* Q1 */}
+    <div className="rounded-xl border bg-white">
+      <dt className="px-4 py-3 font-semibold">
+        1. Does this website collect or store Protected Health Information (PHI)?
+      </dt>
+      <dd className="px-4 pb-4 text-gray-700">
+        No. This website does not collect, store, or transmit any PHI. All OCR (optical character recognition)
+        processing happens entirely in your web browser using JavaScript — nothing is sent to our servers.
+      </dd>
+    </div>
+
+    {/* Q2 */}
+    <div className="rounded-xl border bg-white">
+      <dt className="px-4 py-3 font-semibold">
+        2. I'm still concerned! What can I do?
+      </dt>
+      <dd className="px-4 pb-4 text-gray-700">
+        If you prefer, you can take a photo or screenshot of the 'Procedure' column alone in Powerscribe. 
+      </dd>
+    </div>
+  </dl>
+</Modal>
           </>
         );
       }
