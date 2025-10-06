@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Radiology RVU Calculator — No-Build Demo</title>
+    <title>Radiology RVU Tally — No-Build Demo</title>
 
     <!-- Tailwind (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -26,25 +26,19 @@
     <script type="text/babel">
       const { useMemo, useRef, useState, useEffect } = React;
 
-      // ================= Sticky Header + Modal =================
-      function Header({ onOpenFAQ, onExportCSV }) {
+      // =============== Sticky Header + Modal ===============
+      function Header({ onOpenFAQ }) {
         return (
           <div className="sticky top-0 z-40 backdrop-blur bg-white/80 border-b">
             <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <!--div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-xl bg-black text-white grid place-items-center font-bold">R</div>
                 <div>
-                  <div className="text-sm text-gray-500">Upload a PowerScribe screenshot → OCR → counts → RVUs.</div>
+                  <div className="text-sm text-gray-500">Radiology</div>
                   <div className="text-lg font-semibold tracking-tight">RVU Calculator</div>
                 </div>
-              </div>
+              </div-->
               <nav className="flex items-center gap-2">
-                <button
-                  onClick={onExportCSV}
-                  className="px-3 py-1.5 rounded-xl border bg-white shadow-sm text-sm hover:bg-gray-50"
-                >
-                  Export CSV
-                </button>
                 <button
                   onClick={onOpenFAQ}
                   className="px-3 py-1.5 rounded-xl border bg-white shadow-sm text-sm hover:bg-gray-50"
@@ -64,6 +58,7 @@
       }
 
       function Modal({ open, onClose, title, children }) {
+        // close on ESC
         useEffect(() => {
           if (!open) return;
           const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -73,19 +68,34 @@
 
         if (!open) return null;
         return (
-          <div className="fixed inset-0 z-50" aria-hidden={!open} aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+          <div
+            className="fixed inset-0 z-50"
+            aria-hidden={!open}
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={onClose}
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4">
               <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
                   <h2 className="text-lg font-semibold">{title}</h2>
-                  <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm hover:bg-gray-100" aria-label="Close">✕</button>
+                  <button
+                    onClick={onClose}
+                    className="rounded-lg px-2 py-1 text-sm hover:bg-gray-100"
+                    aria-label="Close"
+                  >✕</button>
                 </div>
                 <div className="px-5 py-4 text-sm leading-6 text-gray-700 max-h-[60vh] overflow-auto">
                   {children}
                 </div>
                 <div className="px-5 py-3 border-t flex justify-end">
-                  <button onClick={onClose} className="px-3 py-1.5 rounded-xl border bg-white hover:bg-gray-50 text-sm">
+                  <button
+                    onClick={onClose}
+                    className="px-3 py-1.5 rounded-xl border bg-white hover:bg-gray-50 text-sm"
+                  >
                     Close
                   </button>
                 </div>
@@ -95,7 +105,7 @@
         );
       }
 
-      // ================= CSV helper =================
+      // CSV helper
       function toCSV(rows) {
         const header = Object.keys(rows[0] || { Study: "", Count: "", RVU: "", Total: "" });
         const lines = [header.join(",")].concat(
@@ -104,7 +114,7 @@
         return lines.join("\n");
       }
 
-      // ================= Regex rules (loose for OCR noise) =================
+      // Prefilled regex rules (loose to tolerate OCR noise)
       const DEFAULT_RULES = [
         { label: "XR HAND 3+ VIEW",               pattern: "XR\\s*HAND\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?", baseRvu: 0.17 },
         { label: "XR ANKLE 3+ VIEW",              pattern: "XR\\s*ANKLE\\b.*(?:3\\s*\\+|3\\+?)\\s*VIEW(?:S)?", baseRvu: 0.17 },
@@ -150,7 +160,7 @@
           pattern: "VA[SC]\\b.*DUPLEX.*ARTERIAL.*CAROTID.*BILAT", baseRvu: 0.60 },
       ];
 
-      // ================= Rows Component =================
+      // =============== App Rows ===============
       function StudyRow({ name, count, rvu, onRvuChange }) {
         const total = (Number(rvu) || 0) * (count || 0);
         return (
@@ -181,7 +191,6 @@
         const [faqOpen, setFaqOpen] = useState(false);
         const fileRef = useRef(null);
 
-        // ---------- OCR ----------
         const handleFile = (file) => {
           if (!file) return;
           setImage(URL.createObjectURL(file));
@@ -208,7 +217,7 @@
           handleFile(file);
         };
 
-        // ---------- Classification ----------
+        // Classifier
         const classify = (rawLines) => {
           const modalityRegex = /\b(XR|X[-\s]?RAY|RADIOGRAPH|CT|CTA|MRI|MRA|US|ULTRASOUND|VAS|VASCULAR)\b/i;
 
@@ -232,7 +241,12 @@
             picked.push(fromModality);
           }
 
-          // First-match wins tally
+          const newCounts = {};
+          for (const pl of picked) {
+            const rule = rules.find((r) => new RegExp(r.pattern, "i").test(pl));
+            const key = rule ? r.label : `❓ Unclassified: ${pl}`;
+          }
+          // Count using first-match wins
           const counted = {};
           for (const pl of picked) {
             const rule = rules.find((r) => new RegExp(r.pattern, "i").test(pl));
@@ -253,9 +267,9 @@
           }
           const lines = ocrText.split(/\n+/).map(s => s.trim()).filter(Boolean);
           classify(lines);
+          // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [ocrText, rules]);
 
-        // ---------- RVU totals + rows ----------
         const totalRVU = useMemo(() => {
           return Object.entries(counts).reduce((acc, [k, c]) => {
             const rule = rules.find((r) => r.label === k);
@@ -282,7 +296,6 @@
           ]);
         };
 
-        // ---------- Export CSV (exposed to header) ----------
         const exportCSV = () => {
           const data = rows.map((r) => ({
             Study: r.name, Count: r.count, RVU: r.rvu,
@@ -300,9 +313,20 @@
 
         return (
           <>
-            <Header onOpenFAQ={() => setFaqOpen(true)} onExportCSV={exportCSV} />
+            <Header onOpenFAQ={() => setFaqOpen(true)} />
             <div className="min-h-screen p-6">
               <div className="max-w-6xl mx-auto space-y-6">
+                <header className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">Radiology RVU Tally</h1>
+                    <p className="text-sm text-gray-600">Upload a PowerScribe screenshot → OCR → counts → RVUs.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-2xl bg-white shadow border">Upload Image</button>
+                    <button onClick={exportCSV} className="px-4 py-2 rounded-2xl bg-white shadow border">Export CSV</button>
+                  </div>
+                </header>
+
                 <input
                   ref={fileRef}
                   type="file"
